@@ -1288,14 +1288,29 @@ export const WORLD_QUESTIONS = Array.from({ length: 10 }, (_, wIdx) => {
 
 /**
  * Get deterministic question by world and question index (0..9)
+ * Shuffles options so correct answer is naturally distributed across positions 0, 1, 2, 3
  */
 export function getQuestion(worldIndex = 0, qIndex = 0) {
   const worldList = WORLD_QUESTIONS[worldIndex] || WORLD_QUESTIONS[0];
   const q = worldList[qIndex] || worldList[0];
+  const correctVal = q.options[q.correctIndex];
+
+  // Deterministically rotate/swap so options are distributed across 0, 1, 2, 3
+  const targetPos = (worldIndex * 3 + qIndex * 7 + 1) % 4;
+  const shuffled = [...q.options];
+  if (targetPos !== 0) {
+    const tmp = shuffled[targetPos];
+    shuffled[targetPos] = shuffled[0];
+    shuffled[0] = tmp;
+  }
+  const newCorrectIndex = shuffled.indexOf(correctVal);
+
   return {
     world: PRACTICE_WORLDS[worldIndex] || PRACTICE_WORLDS[0],
     ...q,
-    correctValue: q.options[q.correctIndex]
+    options: shuffled,
+    correctIndex: newCorrectIndex,
+    correctValue: correctVal
   };
 }
 

@@ -9,6 +9,7 @@ import { feedbackNarration, practiceQuestionNarration, practiceHintNarration } f
    PRACTICE WORLD SELECT GRID (ONLY SHOW REFLECT BUTTON WHEN ALL 10 WORLDS COMPLETED)
    ========================================================================= */
 export function PracticeWorldSelect({ worldResults, onPlay, onGoReflect }) {
+  const [allUnlocked, setAllUnlocked] = useState(false);
   const totalStars = worldResults.reduce((a, b) => a + (b || 0), 0);
 
   // Check if ALL 10 worlds have been completed with at least 1 star (at least 4/10 correct)
@@ -37,6 +38,18 @@ export function PracticeWorldSelect({ worldResults, onPlay, onGoReflect }) {
           </div>
 
           <div className="flex items-center gap-3">
+            <button
+              onClick={() => setAllUnlocked(u => !u)}
+              title="Toggle Unlock All Worlds for quick practice"
+              className={`text-xs font-display font-900 px-3.5 py-2 rounded-full border transition cursor-pointer shadow-md ${
+                allUnlocked
+                  ? 'bg-amber-400 text-slate-950 border-amber-300 shadow-[0_0_12px_rgba(250,204,21,0.5)]'
+                  : 'bg-white/10 text-slate-300 hover:text-white border-white/20'
+              }`}
+            >
+              {allUnlocked ? '🔓 All Unlocked' : '🔒 Unlock All'}
+            </button>
+
             <div className="bg-[#14082c]/90 border-2 border-emerald-400/40 rounded-full px-5 py-2 flex items-center gap-2 shadow-lg">
               <span className="text-amber-400 text-lg">⭐</span>
               <span className="font-display font-900 text-white text-base sm:text-lg">
@@ -56,11 +69,10 @@ export function PracticeWorldSelect({ worldResults, onPlay, onGoReflect }) {
           </div>
         </div>
 
-        {/* 10 Worlds Grid (Unlocked if previous world has stars > 0, i.e. 4/10 correct) */}
+        {/* 10 Worlds Grid */}
         <div className="grid grid-cols-2 sm:grid-cols-5 gap-4 w-full my-auto flex-1 min-h-0 overflow-y-auto p-1">
           {PRACTICE_WORLDS.map((w, idx) => {
-            // World is unlocked if it is World 1 OR if previous world earned > 0 stars (at least 4/10 correct)
-            const isUnlocked = idx === 0 || (worldResults[idx - 1] != null && worldResults[idx - 1] > 0);
+            const isUnlocked = allUnlocked || idx === 0 || (worldResults[idx - 1] != null && worldResults[idx - 1] > 0);
             const stars = worldResults[idx];
 
             return (
@@ -138,16 +150,42 @@ export function PracticeQuiz({ worldIndex, muted, addXp, onFinish }) {
 
   const restartQuiz = () => {
     stopNarration();
-    setQIndex(0);
+    if (timerRef.current) clearTimeout(timerRef.current);
     setLives(3);
     setStreak(0);
     setCorrectCount(0);
     setSelectedIdx(null);
     setPopupState(null);
     setShowHint(false);
-    const q0 = getQuestion(worldIndex, 0);
-    setQData(q0);
-    narrate(practiceQuestionNarration(q0), !muted);
+    if (qIndex === 0) {
+      const q0 = getQuestion(worldIndex, 0);
+      setQData(q0);
+      narrate(practiceQuestionNarration(q0), !muted);
+    } else {
+      setQIndex(0);
+    }
+  };
+
+  const advanceQuestion = () => {
+    if (timerRef.current) {
+      clearTimeout(timerRef.current);
+      timerRef.current = null;
+    }
+    const state = popupState;
+    setPopupState(null);
+    if (!state) return;
+    if (state.livesLeft > 0) {
+      if (qIndex < 9) {
+        setQIndex(i => i + 1);
+      } else {
+        let stars = 0;
+        if (state.correctTotal >= 8) stars = 3;
+        else if (state.correctTotal >= 6) stars = 2;
+        else if (state.correctTotal >= 4) stars = 1;
+        stopNarration();
+        onFinish(worldIndex, stars);
+      }
+    }
   };
 
   const repeatQuestion = () => {
@@ -173,11 +211,10 @@ export function PracticeQuiz({ worldIndex, muted, addXp, onFinish }) {
     setSelectedIdx(idx);
     const isCorrect = idx === qData.correctIndex;
 
-    let updatedLives = lives;
-    let updatedCorrectCount = correctCount;
+    const updatedLives = isCorrect ? lives : lives - 1;
+    const updatedCorrectCount = isCorrect ? correctCount + 1 : correctCount;
 
     if (isCorrect) {
-      updatedCorrectCount = correctCount + 1;
       setCorrectCount(updatedCorrectCount);
       setStreak(s => s + 1);
       addXp(10);
@@ -185,38 +222,27 @@ export function PracticeQuiz({ worldIndex, muted, addXp, onFinish }) {
       setPopupState({
         type: 'correct',
         title: 'Correct! 🎉',
-        text: qData.explanation
+        text: qData.explanation,
+        livesLeft: updatedLives,
+        correctTotal: updatedCorrectCount
       });
     } else {
-      updatedLives = lives - 1;
       setLives(updatedLives);
       setStreak(0);
       narrate(feedbackNarration.practiceWrong(), !muted);
       setPopupState({
         type: 'incorrect',
         title: 'Not quite!',
-        text: `Solution: ${qData.explanation}`
+        text: `Solution: ${qData.explanation}`,
+        livesLeft: updatedLives,
+        correctTotal: updatedCorrectCount
       });
     }
 
-    // Auto-switch to next question OR show Out of Hearts screen without auto-teleporting to world list
+    // Auto-advance after 3.2 seconds so the student can read the solution and hear the audio
     timerRef.current = setTimeout(() => {
-      setPopupState(null);
-      if (updatedLives > 0) {
-        if (qIndex < 9) {
-          setQIndex(i => i + 1);
-        } else {
-          // Finished all 10 questions successfully
-          let stars = 0;
-          if (updatedCorrectCount >= 8) stars = 3;
-          else if (updatedCorrectCount >= 6) stars = 2;
-          else if (updatedCorrectCount >= 4) stars = 1;
-          stopNarration();
-          onFinish(worldIndex, stars);
-        }
-      }
-      // If updatedLives <= 0, popup closes and Out of Hearts screen stays displayed!
-    }, 1000);
+      advanceQuestion();
+    }, 3200);
   };
 
   const isGameOver = lives <= 0;
@@ -226,23 +252,29 @@ export function PracticeQuiz({ worldIndex, muted, addXp, onFinish }) {
     <div className="flex-1 min-h-0 flex flex-col items-center justify-center p-3 sm:p-5 relative overflow-hidden select-none z-10">
       <BgSymbols />
 
-      {/* Center 1-Second Animated Pop-up Overlay */}
+      {/* Center Feedback Pop-up Overlay with Continue Action */}
       {popupState && !isGameOver && (
         <div className="fixed inset-0 bg-black/70 backdrop-blur-md z-50 flex items-center justify-center p-4 fade-in-up">
-          <div className={`w-88 sm:w-[420px] rounded-3xl p-7 sm:p-8 shadow-2xl flex flex-col items-center text-center border-4 border-white/20 scale-105 transition-all duration-300 ${
+          <div className={`w-88 sm:w-[440px] rounded-3xl p-7 sm:p-8 shadow-2xl flex flex-col items-center text-center border-4 border-white/20 scale-105 transition-all duration-300 ${
             popupState.type === 'correct'
               ? 'bg-gradient-to-b from-emerald-500 via-green-600 to-emerald-700 text-white shadow-[0_0_50px_rgba(52,211,153,0.7)]'
               : 'bg-gradient-to-b from-rose-500 via-red-600 to-rose-700 text-white shadow-[0_0_50px_rgba(244,63,94,0.7)]'
           }`}>
-            <span className="text-7xl sm:text-8xl mb-3 drop-shadow-lg animate-bounce">
+            <span className="text-7xl sm:text-8xl mb-2 drop-shadow-lg animate-bounce">
               {popupState.type === 'correct' ? '🎉' : '🥺'}
             </span>
             <h3 className="font-display font-900 text-3xl sm:text-4xl text-white mb-2 leading-tight">
               {popupState.title}
             </h3>
-            <p className="font-extrabold text-base sm:text-lg text-slate-100 leading-relaxed max-w-sm">
+            <p className="font-extrabold text-base sm:text-lg text-slate-100 leading-relaxed max-w-sm mb-4">
               {popupState.text}
             </p>
+            <button
+              onClick={advanceQuestion}
+              className="bg-white text-slate-950 hover:bg-slate-100 font-display font-900 text-sm sm:text-base px-6 py-2.5 rounded-full shadow-lg transition transform hover:scale-105 active:scale-95 cursor-pointer flex items-center gap-1.5"
+            >
+              <span>{qIndex < 9 ? 'Next Question →' : 'See Results 🏆'}</span>
+            </button>
           </div>
         </div>
       )}

@@ -8,6 +8,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "audio:generate": "node scripts/generate_audio.js",
+    "audio:practice": "node scripts/generate_practice_audio.js",
     "audio:clean": "node scripts/clean_audio.js"
   },
   "dependencies": {

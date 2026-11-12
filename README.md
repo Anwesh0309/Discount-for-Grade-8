@@ -55,3 +55,4 @@ Visit [http://localhost:3000/](http://localhost:3000/) in your browser.
 - `npm run dev` — Launch Vite dev server.
 - `npm run build` — Build production bundle.
 - `npm run audio:generate` — Re-generate narration audio files via ElevenLabs or offline TTS.
+
